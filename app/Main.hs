@@ -1,38 +1,41 @@
 {-# LANGUAGE LambdaCase #-}
 module Main where
 
-import Data.String.Utils
+import Data.List
 import Lib
 import Data.String.Strip
 
 main :: IO ()
 main = print "hello"
 
-newtype Parser = P (String -> [(String, String)])
+type Input = String
+type Structure a = a
+newtype Parser a = P (Input -> [(Structure a, Input)])
 
-parse :: Parser -> String -> [(String, String)]
+parse :: Parser a -> Input -> [(Structure a, Input)]
 parse (P p) = p
 
-empty :: Parser
+empty :: Parser a
 empty = P (const [])
 
-whiteSpace :: Parser
+whiteSpace :: Parser String
 whiteSpace = character ' '
 
-openBracket :: Parser
+openBracket :: Parser String
 openBracket = character '('
 
-character :: Char -> Parser
-character c = P $ \case
-    (c:cs) | c == c -> [([c], cs)]
+character :: Char -> Parser String
+character t = P $ \case
+    (c:cs) | c == t -> [([c], cs)]
     _ -> []
 
-word :: String -> Parser
+word :: String -> Parser String
 word w = P $ \input ->
-    if startswith w input then [(w, drop (length w) input)]
+    if w `isPrefixOf` input then [(w, drop (length w) input)]
     else []
 
-(<+>) :: Parser -> Parser -> Parser
+(<+>) :: Parser a -> Parser a -> Parser a
 (P a) <+> (P b) = P $ \input -> a input ++ b input
 
-
+oneOrNone :: Parser a -> Parser a
+oneOrNone (P p) = undefined
