@@ -8,13 +8,6 @@ import Data.String.Strip
 main :: IO ()
 main = print "hello"
 
-type Input = String
-type Structure a = a
-newtype Parser a = P (Input -> [(Structure a, Input)])
-
-parse :: Parser a -> Input -> [(Structure a, Input)]
-parse (P p) = p
-
 empty :: Parser a
 empty = P (const [])
 
