@@ -1,34 +1,66 @@
 {-# LANGUAGE LambdaCase #-}
 module Main where
 
-import Data.List
 import Lib
 import Data.String.Strip
+--import Control.Monad.Trans
 
 main :: IO ()
-main = print "hello"
+main = print "asdf"
 
-empty :: Parser a
-empty = P (const [])
+main1 :: IO ()
+main1 = evalST (testSIO >> testSIO) 0
 
-whiteSpace :: Parser String
-whiteSpace = character ' '
+testSIO :: StateIO Int ()
+testSIO = do
+    x <- getS
+    liftS $ print x
+    putS (x + 10)
+    return ()
 
-openBracket :: Parser String
-openBracket = character '('
+--main :: IO ()
+{-
+main1 :: StateT Int IO ()
+main1 = do
+    print "hello"
+    --put (5 :: Int)
+    x <- get
+    print $ 1 + x
+    return x
+-}
+newtype StateIO s a = S { runST :: s -> IO (s, a)}
 
-character :: Char -> Parser String
-character t = P $ \case
-    (c:cs) | c == t -> [([c], cs)]
-    _ -> []
+evalST :: StateIO s a -> s -> IO a
+evalST (S v) state = do
+    (s, a) <- v state
+    return a
 
-word :: String -> Parser String
-word w = P $ \input ->
-    if w `isPrefixOf` input then [(w, drop (length w) input)]
-    else []
+liftS :: IO a -> StateIO s a
+liftS action = S $ \s -> do
+    a <- action
+    return (s, a)
 
-(<+>) :: Parser a -> Parser a -> Parser a
-(P a) <+> (P b) = P $ \input -> a input ++ b input
+getS :: StateIO s s
+getS = S $ \s -> return (s, s)
 
-oneOrNone :: Parser a -> Parser a
-oneOrNone (P p) = undefined
+putS :: s -> StateIO s ()
+putS x = S $ \s -> return (x, ())
+
+bindS :: StateIO s a -> (a -> StateIO s b) -> StateIO s b
+bindS (S u) f = S $ \s -> do
+    (s', a') <- u s
+    runST (f a') s'
+
+instance Functor (StateIO s) where
+    fmap f (S u) = S $ \s -> fmap (fmap f) (u s)
+
+instance Applicative (StateIO s) where
+    pure a = S $ \s -> return (s,a)
+    (S f) <*> (S a) = S $ \s -> do
+        (s1, f') <- f s
+        (s2, a') <- a s1
+        return (s2, f' a')
+
+instance Monad (StateIO s) where
+    (>>=) = bindS
+
