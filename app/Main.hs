@@ -1,12 +1,19 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, RankNTypes #-}
 module Main where
 
 import Lib
 import Data.String.Strip
---import Control.Monad.Trans
+import Control.Monad.Trans
+import Control.Monad.State
 
 main :: IO ()
-main = print "asdf"
+main = runStateT (code >> code) 0 >> print "asdf"
+
+code :: StateT Integer IO ()
+code = do
+    x <- get
+    liftIO $ print x
+    put $ x + 10
 
 main1 :: IO ()
 main1 = evalST (testSIO >> testSIO) 0
@@ -18,21 +25,11 @@ testSIO = do
     putS (x + 10)
     return ()
 
---main :: IO ()
-{-
-main1 :: StateT Int IO ()
-main1 = do
-    print "hello"
-    --put (5 :: Int)
-    x <- get
-    print $ 1 + x
-    return x
--}
 newtype StateIO s a = S { runST :: s -> IO (s, a)}
 
 evalST :: StateIO s a -> s -> IO a
 evalST (S v) state = do
-    (s, a) <- v state
+    (_, a) <- v state
     return a
 
 liftS :: IO a -> StateIO s a
