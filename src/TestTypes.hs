@@ -1,7 +1,10 @@
 {-# LANGUAGE RankNTypes #-}
 module TestTypes where
 
-import Data.List
+import Prelude hiding (lookup)
+import qualified Data.List as L
+import Data.Char
+
 
 data MyType = Val1 | Val2 | BadVal
 
@@ -86,9 +89,114 @@ data Expr = Val Int | Expr :+: Expr | Expr :*: Expr
     deriving (Show, Eq)
 
 expand :: Expr -> Expr
-expand ((e1 :+: e2) :*: e) = expand $ e1 :*: e :+: e2 :*: e
-expand (e :*: (e1 :+: e2)) = expand $ e :*: e1 :+: e :*: e2
-expand (e1 :+: e2) = expand e1 :+: expand e2
-expand (e1 :*: e2) = expand e1 :*: expand e2
-expand (Val e) = Val e
+expand e = if expand' e == e then e else expand $ expand' e
+
+expand' :: Expr -> Expr
+expand' ((e1 :+: e2) :*: e) = expand' $ e1 :*: e :+: e2 :*: e
+expand' (e :*: (e1 :+: e2)) = expand' $ e :*: e1 :+: e :*: e2
+expand' (e1 :+: e2) = expand' e1 :+: expand' e2
+expand' (e1 :*: e2) = expand' e1 :*: expand' e2
+expand' (Val e) = Val e
+
+
+class MapLike m where
+    empty :: m k v
+    lookup :: Ord k => k -> m k v -> Maybe v
+    insert :: Ord k => k -> v -> m k v -> m k v
+    delete :: Ord k => k -> m k v -> m k v
+    fromList :: Ord k => [(k,v)] -> m k v
+    fromList [] = empty
+    fromList ((k,v):xs) = insert k v (fromList xs)
+
+newtype ListMap k v = ListMap { getListMap :: [(k,v)] }
+    deriving (Eq,Show)
+
+instance MapLike ListMap where
+    empty = ListMap []
+    lookup k (ListMap []) = Nothing
+    lookup k (ListMap ((k', v'):kvs))
+        | k == k' = Just v'
+        | otherwise = lookup k (ListMap kvs)
+    insert k v (ListMap kvs) = ListMap $ ins' k v [] kvs
+        where
+            ins' k v acc [] = (k, v):acc
+            ins' k v acc ((k',v'):kvs)
+                | k == k' = acc ++ ((k, v) : kvs)
+                | otherwise = ins' k v ((k',v'):acc) kvs
+    delete k (ListMap kvs) = ListMap $ del' k [] kvs
+        where
+            del' k acc [] = acc
+            del' k acc ((k', v') : kvs)
+                | k == k' = acc ++ kvs
+                | otherwise = del' k ((k', v') : acc) kvs
+
+
+newtype ArrowMap k v = ArrowMap { getArrowMap :: k -> Maybe v }
+
+instance MapLike ArrowMap where
+    empty = ArrowMap $ const Nothing
+    lookup = flip getArrowMap
+    insert key v (ArrowMap m) = ArrowMap (\k -> if k == key then Just v else m k)
+    delete key (ArrowMap m) = ArrowMap (\k -> if k == key then Nothing else m k)
+    fromList ((k,v):xs) = insert k v (fromList xs)
+
+
+data Log a = Log [String] a deriving (Show)
+toLogger :: (a -> b) -> String -> (a -> Log b)
+toLogger f msg a = Log [msg] (f a)
+
+execLoggers :: a -> (a -> Log b) -> (b -> Log c) -> Log c
+execLoggers x f g = let
+    Log messagesB b = f x
+    Log messagesC c = g b
+    in Log (messagesB ++ messagesC) c
+
+bindLog :: Log a -> (a -> Log b) -> Log b
+bindLog (Log mA a) f = let
+    Log mB b = f a
+    in Log (mA ++ mB) b
+
+instance Functor Log where
+    fmap f (Log ms a) = Log ms (f a)
+
+instance Applicative Log where
+    pure = Log []
+    (Log mAtoB ab) <*> (Log mA a) = Log (mAtoB ++ mA) (ab a)
+
+instance Monad Log where
+    (>>=) = bindLog
+
+execLoggersList :: a -> [a -> Log a] -> Log a
+execLoggersList a [] = return a
+execLoggersList a (l:ls) = do
+    a' <- l a
+    execLoggersList a' ls
+
+add1Log a = Log ["add1"] (1+a)
+mult2Log a = Log ["mul2"] (2*a)
+
+data Token = Number Int | Plus | Minus | LeftBrace | RightBrace    
+    deriving (Eq, Show)
+-- Тип Token уже объявлен, его писать не нужно
+
+
+asToken :: String -> Maybe Token
+asToken [] = Nothing
+asToken "+" = Just Plus
+asToken "-" = Just Minus
+asToken "(" = Just LeftBrace
+asToken ")" = Just RightBrace
+asToken n = if all isDigit n then Just $ Number (read n) else Nothing
+
+tokenize :: String -> Maybe [Token]
+tokenize input = if all isJust mTokens then Just $ list mTokens else Nothing
+    where
+        mTokens = map asToken . words $ input
+        isJust (Just _) = True
+        isJust _ = False
+        list [] = []
+        list (Just a : ms) = a : list ms
+        list (Nothing : ms) = list ms
+
+
 
